@@ -17,12 +17,10 @@ export default function Login() {
 
   const signIn = async (e) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
+    setError(""); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError(error.message);
-    else window.location.href = "/";
+    if (error) setError(error.message); else window.location.href = "/";
   };
 
   return (

@@ -62,7 +62,7 @@ export default function BookingsPage() {
     const end = toTs(date, endTime);
     if (new Date(end) <= new Date(start)) { setErrorMsg("End must be after start."); return; }
 
-    // conflict check (overlap)
+    // conflict check
     const { data: conflicts, error: confErr } = await supabase
       .from("bookings")
       .select("id")

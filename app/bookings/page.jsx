@@ -1,3 +1,163 @@
+"use client";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
+
+const toTs = (d,t) => new Date(`${d}T${t}:00`).toISOString();
+
 export default function BookingsPage() {
-  return <h1>Bookings page is working!</h1>;
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [locations, setLocations] = useState([]);
+  const [locationId, setLocationId] = useState(null);
+
+  const [rooms, setRooms] = useState([]);
+  const [roomId, setRoomId] = useState(null);
+
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const [bookings, setBookings] = useState([]);
+
+  // Require login + load locations
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { window.location.href = "/login"; return; }
+
+      const { data: locs, error } = await supabase
+        .from("locations").select("id,name").order("name");
+      if (error) setErrorMsg(error.message);
+      setLocations(locs ?? []);
+      if (locs?.length) setLocationId(locs[0].id);
+      setLoading(false);
+    })();
+  }, []);
+
+  // Load rooms for selected location
+  useEffect(() => {
+    if (!locationId) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("rooms").select("id,name").eq("location_id", locationId).order("name");
+      if (error) setErrorMsg(error.message);
+      setRooms(data ?? []);
+      setRoomId(data?.[0]?.id ?? null);
+    })();
+  }, [locationId]);
+
+  // Load upcoming bookings for selected room
+  useEffect(() => {
+    if (!roomId) { setBookings([]); return; }
+    (async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("id,start_time,end_time,notes")
+        .eq("room_id", roomId)
+        .gte("end_time", now)
+        .order("start_time");
+      if (error) setErrorMsg(error.message);
+      setBookings(data ?? []);
+    })();
+  }, [roomId]);
+
+  async function createBooking(e) {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (!roomId || !date || !startTime || !endTime) {
+      setErrorMsg("Pick a location, room, date, start and end time.");
+      return;
+    }
+
+    const start = toTs(date, startTime);
+    const end = toTs(date, endTime);
+    if (new Date(end) <= new Date(start)) {
+      setErrorMsg("End must be after start."); return;
+    }
+
+    // Check overlap/conflicts
+    const { data: conflicts, error: confErr } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("room_id", roomId)
+      .or(`and(start_time.lt.${end},end_time.gt.${start})`);
+    if (confErr) { setErrorMsg(confErr.message); return; }
+    if (conflicts?.length) { setErrorMsg("Time conflicts with an existing booking."); return; }
+
+    // Insert booking
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from("bookings").insert({
+      room_id: roomId, user_id: user.id, start_time: start, end_time: end, notes: notes || null
+    });
+    if (error) { setErrorMsg(error.message); return; }
+
+    // Refresh upcoming
+    setNotes("");
+    const now = new Date().toISOString();
+    const { data } = await supabase
+      .from("bookings").select("id,start_time,end_time,notes")
+      .eq("room_id", roomId).gte("end_time", now).order("start_time");
+    setBookings(data ?? []);
+  }
+
+  if (loading) return <div className="container">Loading…</div>;
+
+  return (
+    <div className="container">
+      <h1 className="h1">Bookings</h1>
+
+      {errorMsg && <p style={{ color:"crimson" }}>{errorMsg}</p>}
+
+      <div className="card">
+        <div className="grid2">
+          <div>
+            <label>Location</label>
+            <select className="input mt8" value={locationId ?? ""} onChange={e=>setLocationId(Number(e.target.value))}>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>Room</label>
+            <select className="input mt8" value={roomId ?? ""} onChange={e=>setRoomId(Number(e.target.value))}>
+              {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <form onSubmit={createBooking} className="grid2 mt16" style={{ gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+          <div><label>Date</label><input className="input mt8" type="date" value={date} onChange={e=>setDate(e.target.value)} required /></div>
+          <div><label>Start</label><input className="input mt8" type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} required /></div>
+          <div><label>End</label><input className="input mt8" type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} required /></div>
+          <div><label>Notes</label><input className="input mt8" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Optional" /></div>
+          <div style={{ gridColumn:"1 / -1", textAlign:"right" }}>
+            <button className="btn" type="submit">Create booking</button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card mt24">
+        <h2 className="h2">Upcoming bookings</h2>
+        {bookings.length === 0 ? (
+          <p className="muted">No upcoming bookings for this room.</p>
+        ) : (
+          <table className="table mt8">
+            <thead><tr><th>Start</th><th>End</th><th>Notes</th></tr></thead>
+            <tbody>
+              {bookings.map(b => (
+                <tr key={b.id}>
+                  <td>{new Date(b.start_time).toLocaleString()}</td>
+                  <td>{new Date(b.end_time).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</td>
+                  <td>{b.notes || ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
 }

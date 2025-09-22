@@ -7,10 +7,13 @@
     "build": "next build",
     "start": "next start"
   },
-  "dependencies": {
+ "dependencies": {
     "next": "14.2.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "@supabase/supabase-js": "2.45.4"
+
+    "date-fns": "^3.6.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.446.0"
   }
 }

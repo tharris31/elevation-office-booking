@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./globals.css";
 import ClientNav from "./ClientNav";
 
 export const metadata = { title: "Elevation Office Booking" };
@@ -6,10 +7,10 @@ export const metadata = { title: "Elevation Office Booking" };
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "system-ui, Arial" }}>
-        <header style={{ display: "flex", gap: 16, alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #eee" }}>
+      <body>
+        <header className="header">
           <strong>Elevation Office Booking</strong>
-          <nav style={{ display: "flex", gap: 12 }}>
+          <nav className="nav">
             <Link href="/">Home</Link>
             <Link href="/rooms">Rooms</Link>
             <Link href="/bookings">Bookings</Link>
@@ -18,7 +19,7 @@ export default function RootLayout({ children }) {
             <ClientNav />
           </div>
         </header>
-        <div style={{ padding: 24 }}>{children}</div>
+        <div className="container">{children}</div>
       </body>
     </html>
   );

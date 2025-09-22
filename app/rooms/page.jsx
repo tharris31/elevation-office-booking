@@ -5,67 +5,73 @@ import { supabase } from "../../lib/supabaseClient";
 export default function RoomsPage() {
   const [loading, setLoading] = useState(true);
   const [locations, setLocations] = useState([]);
-  const [selectedLoc, setSelectedLoc] = useState(null);
+  const [locationId, setLocationId] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [newRoom, setNewRoom] = useState("");
 
   useEffect(() => {
     (async () => {
-      // require login
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { window.location.href = "/login"; return; }
-
       const { data: locs } = await supabase.from("locations").select("id,name").order("name");
       setLocations(locs ?? []);
-      if (locs?.length) setSelectedLoc(locs[0].id);
+      if (locs?.length) setLocationId(locs[0].id);
       setLoading(false);
     })();
   }, []);
 
   useEffect(() => {
-    if (!selectedLoc) return;
+    if (!locationId) return;
     (async () => {
       const { data } = await supabase
-        .from("rooms")
-        .select("id,name,location_id")
-        .eq("location_id", selectedLoc)
-        .order("name");
+        .from("rooms").select("id,name").eq("location_id", locationId).order("name");
       setRooms(data ?? []);
     })();
-  }, [selectedLoc]);
+  }, [locationId]);
 
   async function addRoom(e) {
     e.preventDefault();
-    if (!newRoom.trim() || !selectedLoc) return;
-    const { error } = await supabase.from("rooms").insert({ name: newRoom.trim(), location_id: selectedLoc });
-    if (!error) {
-      setNewRoom("");
-      const { data } = await supabase.from("rooms").select("id,name,location_id").eq("location_id", selectedLoc).order("name");
-      setRooms(data ?? []);
-    } else {
-      alert(error.message);
-    }
+    if (!newRoom.trim() || !locationId) return;
+    const { error } = await supabase.from("rooms").insert({ name: newRoom.trim(), location_id: locationId });
+    if (error) return alert(error.message);
+    setNewRoom("");
+    const { data } = await supabase.from("rooms").select("id,name").eq("location_id", locationId).order("name");
+    setRooms(data ?? []);
   }
 
   if (loading) return <p>Loading…</p>;
 
   return (
-    <main>
-      <h1>Rooms</h1>
-      <label>Location:&nbsp;</label>
-      <select value={selectedLoc ?? ""} onChange={e=>setSelectedLoc(Number(e.target.value))}>
-        {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-      </select>
+    <>
+      <h1 className="h1">Rooms</h1>
 
-      <form onSubmit={addRoom} style={{ marginTop: 16 }}>
-        <input placeholder="New room name" value={newRoom} onChange={e=>setNewRoom(e.target.value)} />
-        <button type="submit">Add room</button>
-      </form>
+      <div className="card">
+        <div className="grid2">
+          <div>
+            <label>Location</label>
+            <select className="mt8 input" value={locationId ?? ""} onChange={e=>setLocationId(Number(e.target.value))}>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <form onSubmit={addRoom}>
+            <label>Add a new room</label>
+            <div className="grid2 mt8">
+              <input className="input" placeholder="Room name (e.g., Room 1)" value={newRoom}
+                     onChange={e=>setNewRoom(e.target.value)} />
+              <button className="btn" type="submit">Add</button>
+            </div>
+          </form>
+        </div>
 
-      <ul style={{ marginTop: 16 }}>
-        {rooms.map(r => <li key={r.id}>{r.name}</li>)}
-        {rooms.length === 0 && <li>No rooms yet for this location.</li>}
-      </ul>
-    </main>
+        <h2 className="h2 mt24">Rooms in this location</h2>
+        {rooms.length === 0 ? (
+          <p className="muted">No rooms yet for this location.</p>
+        ) : (
+          <ul className="mt8">
+            {rooms.map(r => <li key={r.id}>{r.name}</li>)}
+          </ul>
+        )}
+      </div>
+    </>
   );
 }

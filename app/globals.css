@@ -18,3 +18,10 @@ a:hover{text-decoration:underline}
 .muted{color:var(--muted)}
 .mt16{margin-top:16px}
 .mt24{margin-top:24px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.legend-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;font-size:12px}
+.dot{width:10px;height:10px;border-radius:999px;border:1px solid rgba(0,0,0,.1)}
+.badge-colored{display:inline-block;padding:4px 8px;border-radius:999px;color:#fff;font-size:12px}
+.kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.kpi .card{padding:12px}
+.kpi .big{font-size:20px;font-weight:700}

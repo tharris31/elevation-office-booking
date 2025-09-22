@@ -24,3 +24,12 @@ export default function RootLayout({ children }) {
     </html>
   );
 }
+
+// ...
+<nav className="nav">
+  <Link href="/">Home</Link>
+  <Link href="/rooms">Rooms</Link>
+  <Link href="/bookings">Bookings</Link>
+  <Link href="/therapists">Therapists</Link>  {/* <-- add this */}
+</nav>
+// ...

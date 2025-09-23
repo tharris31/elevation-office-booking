@@ -10,21 +10,33 @@ import { motion } from "framer-motion";
 import {
   Download, Plus, Trash2, Filter, Group, CalendarClock, Building2, X
 } from "lucide-react";
-import {
-  Card, CardHeader, CardContent,
-  Button, PrimaryButton, DangerButton,
-  Label, Input, Select, Textarea
-} from "../../components/ui/primitives";
 
-// Business hours (Mon–Thu 9–20, Fri–Sat 9–16, Sun closed)
+/* ---------- light-weight UI primitives (keeps page self-contained) ---------- */
+const Button = ({ className="", children, ...p }) => (
+  <button className={`btn ${className}`} {...p}>{children}</button>
+);
+const PrimaryButton = (p) => <Button className="btn--primary" {...p} />;
+const DangerButton = (p) => <Button className="btn--danger" {...p} />;
+const Label = ({children}) => <label className="label">{children}</label>;
+const Input = (p) => <input className="input" {...p}/>;
+const Textarea = (p) => <textarea className="textarea" {...p}/>;
+const Select = (p) => <select className="select" {...p}/>;
+
+const Card = ({children, style}) => <div className="card" style={style}>{children}</div>;
+const CardHeader = ({children}) => <div className="card__head">{children}</div>;
+const CardContent = ({children}) => <div className="card__body">{children}</div>;
+
+/* --------------------------- business hours config -------------------------- */
+/* Mon–Thu 9–20, Fri–Sat 9–16, Sun closed */
 const HOURS = { 0:null, 1:[9,20], 2:[9,20], 3:[9,20], 4:[9,20], 5:[9,16], 6:[9,16] };
 
-// color per therapist (stable)
+/* --------------------------- color per therapist ---------------------------- */
 const colorForId = (id) => {
   let h=0; for (let i=0;i<(id?.length||0);i++) h=(h*31+id.charCodeAt(i))%360;
   return `hsl(${h} 70% 45%)`;
 };
 
+/* -------------------------------- CSV export -------------------------------- */
 function exportCSV(bookings, therapists, rooms, locations) {
   const tmap = Object.fromEntries(therapists.map(t=>[t.id, t.name || t.email || "Therapist"]));
   const rmap = Object.fromEntries(rooms.map(r=>[r.id, r.name]));
@@ -49,6 +61,7 @@ function exportCSV(bookings, therapists, rooms, locations) {
   const a=document.createElement("a"); a.href=url; a.download=`bookings-${format(new Date(),"yyyyMMdd-HHmm")}.csv`; a.click(); URL.revokeObjectURL(url);
 }
 
+/* =============================== Page Component ============================= */
 export default function BookingsPage() {
   // master data
   const [locations, setLocations] = useState([]);
@@ -68,7 +81,7 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // modal
+  // modal (create)
   const [open, setOpen] = useState(false);
   const [mTherapistId, setMTherapistId] = useState("");
   const [mRoomId, setMRoomId] = useState("");
@@ -140,11 +153,11 @@ export default function BookingsPage() {
     return bookings.filter(b=>{
       const okTher = therapistFilterId ? b.therapist_id===therapistFilterId : true;
       const okRoom = roomId ? String(b.room_id)===String(roomId) : true;
-      // if grouping by location and Filter location == All, still show all
       return okTher && okRoom;
     });
   },[bookings, therapistFilterId, roomId]);
 
+  /* ------------------------------- create booking ------------------------------ */
   async function createBooking() {
     setErr("");
     if(!mTherapistId || !mRoomId || !mStart || !mEnd){ setErr("Please complete all required fields."); return; }
@@ -159,7 +172,6 @@ export default function BookingsPage() {
     if (!repeatWeekly) {
       occurrences.push([start0, end0]);
     } else {
-      // weekly on the same weekday until date (inclusive)
       if(!repeatUntil){ setErr("Select an 'until' date for weekly repeats."); return; }
       const until = new Date(repeatUntil+"T23:59");
       let s = new Date(start0), e = new Date(end0);
@@ -170,13 +182,16 @@ export default function BookingsPage() {
       }
     }
 
-    // check conflicts per occurrence and insert those that fit
     let created = 0, skipped = 0;
     for (const [s, e] of occurrences) {
+      // ✅ FIXED CONFLICT CHECK (AND conditions)
       const { data: conflicts, error: cErr } = await supabase
-        .from("bookings").select("id")
+        .from("bookings")
+        .select("id")
         .eq("room_id", Number(mRoomId))
-        .or(`and(start_time.lt.${e.toISOString()},end_time.gt.${s.toISOString()})`);
+        .lt("start_time", e.toISOString())
+        .gt("end_time", s.toISOString());
+
       if (cErr) { setErr(cErr.message); return; }
       if (conflicts?.length) { skipped++; continue; }
 
@@ -227,7 +242,7 @@ export default function BookingsPage() {
     setBookings(prev => prev.filter(b=>b.id!==id));
   }
 
-  if (loading) return <div>Loading…</div>;
+  if (loading) return <div style={{padding:16}}>Loading…</div>;
 
   return (
     <>
@@ -314,7 +329,6 @@ export default function BookingsPage() {
               therapists={therapists}
               roomById={roomById}
               therapistById={therapistById}
-              // show ALL bookings filtered by selects
               bookings={filtered}
               onDelete={deleteBooking}
             />
@@ -385,10 +399,42 @@ export default function BookingsPage() {
           </div>
         </div>
       )}
+
+      {/* page styles */}
+      <style jsx global>{`
+        :root { --brand:#4f46e5; --muted:#6b7280; }
+        .row { display:flex; align-items:center; gap:8px; }
+        .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow:0 1px 1px rgba(0,0,0,.02); }
+        .card__head { padding:12px 16px; border-bottom:1px solid #eef1f4; display:flex; align-items:center; justify-content:space-between; }
+        .card__body { padding:16px; }
+        .btn { padding:8px 12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; cursor:pointer; }
+        .btn:hover{ box-shadow:0 2px 8px rgba(0,0,0,.06); }
+        .btn--primary{ background:var(--brand); color:#fff; border-color:var(--brand); }
+        .btn--primary:hover{ filter:brightness(.95); }
+        .btn--danger{ background:#fee2e2; border-color:#fecaca; }
+        .btn--sm{ padding:4px 8px; }
+        .label{ font-size:12px; color:#6b7280; margin-bottom:4px; }
+        .input,.select,.textarea{ width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
+        .textarea{ min-height:80px; }
+        .grid{ display:grid; gap:8px; }
+        .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .grid-6{ grid-template-columns: repeat(6, minmax(0,1fr)); }
+        @media (max-width:900px){ .grid-6{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+        .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:50; }
+        .modal{ width:min(680px, 92vw); background:#fff; border-radius:16px; overflow:hidden; }
+        .modal__head{ padding:12px 16px; border-bottom:1px solid #eef1f4; }
+        .modal__body{ padding:14px 16px; }
+        .modal__foot{ padding:12px 16px; border-top:1px solid #eef1f4; display:flex; gap:8px; justify-content:flex-end; }
+        .table{ border-collapse: separate; border-spacing:0; min-width:100%; table-layout:fixed; }
+        .table th, .table td{ border-bottom:1px solid #eef1f4; padding:8px 10px; font-size:12px; white-space:nowrap; }
+        .table th{ color:#6b7280; font-weight:600; }
+        .table .sticky{ position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #eef1f4; }
+      `}</style>
     </>
   );
 }
 
+/* ---------------------------- Day Grid (scheduler) --------------------------- */
 function DayGrid({
   theDay, groupBy, locations, rooms, therapists, therapistById, roomById,
   bookings, onDelete
@@ -407,8 +453,7 @@ function DayGrid({
   const groups = useMemo(()=>{
     if(groupBy==="room") return rooms;
     if(groupBy==="therapist") return therapists;
-    // group by location
-    return locations;
+    return locations; // group by location
   },[groupBy, rooms, therapists, locations]);
 
   const isInCell = (b, cellStart, cellEnd) => {
@@ -471,7 +516,7 @@ function DayGrid({
                               style={{
                                 position:"absolute", inset:4, border:`1px solid ${color}66`,
                                 background:`${color}15`, color:"#111", borderRadius:12,
-                                display:"flex", flexDirection:"column", alignItems:"start"
+                                display:"flex", flexDirection:"column", alignItems:"start", padding:"4px 8px"
                               }}
                               title={`${format(parseISO(b.start_time),"h:mma")} – ${format(parseISO(b.end_time),"h:mma")}`}
                             >

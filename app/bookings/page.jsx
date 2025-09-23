@@ -184,13 +184,16 @@ export default function BookingsPage() {
 
     let created = 0, skipped = 0;
     for (const [s, e] of occurrences) {
-      // ✅ FIXED CONFLICT CHECK (AND conditions)
+      // ✅ RELIABLE CONFLICT CHECK:
+      // conflict exists when NOT (existing.end <= s OR existing.start >= e)
+      // which in PostgREST we can write as:
+      //  not(end_time.lte.s) AND not(start_time.gte.e)
       const { data: conflicts, error: cErr } = await supabase
         .from("bookings")
         .select("id")
         .eq("room_id", Number(mRoomId))
-        .lt("start_time", e.toISOString())
-        .gt("end_time", s.toISOString());
+        .not("end_time", "lte", s.toISOString())
+        .not("start_time", "gte", e.toISOString());
 
       if (cErr) { setErr(cErr.message); return; }
       if (conflicts?.length) { skipped++; continue; }
@@ -327,10 +330,7 @@ export default function BookingsPage() {
               locations={locations}
               rooms={roomsForLocation}
               therapists={therapists}
-              roomById={roomById}
-              therapistById={therapistById}
               bookings={filtered}
-              onDelete={deleteBooking}
             />
           ))}
         </CardContent>
@@ -420,26 +420,31 @@ export default function BookingsPage() {
         .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
         .grid-6{ grid-template-columns: repeat(6, minmax(0,1fr)); }
         @media (max-width:900px){ .grid-6{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+        /* --------- TABLE VISIBILITY FIX: wider, centered hour columns ---------- */
+        .schedule-wrap { overflow-x:auto; }
+        table.table { border-collapse: separate; border-spacing:0; min-width:100%; table-layout:fixed; }
+        .table th, .table td{
+          border-bottom:1px solid #eef1f4; padding:8px 10px; font-size:12px;
+          white-space:nowrap; text-align:center; min-width: 88px; /* <-- make headers breathe */
+        }
+        .table th.time { color:#6b7280; font-weight:600; }
+        .table th.first, .table td.first { position:sticky; left:0; background:#fff; z-index:1; text-align:left; min-width: 200px; border-right:1px solid #eef1f4; }
+
         .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:50; }
         .modal{ width:min(680px, 92vw); background:#fff; border-radius:16px; overflow:hidden; }
         .modal__head{ padding:12px 16px; border-bottom:1px solid #eef1f4; }
         .modal__body{ padding:14px 16px; }
         .modal__foot{ padding:12px 16px; border-top:1px solid #eef1f4; display:flex; gap:8px; justify-content:flex-end; }
-        .table{ border-collapse: separate; border-spacing:0; min-width:100%; table-layout:fixed; }
-        .table th, .table td{ border-bottom:1px solid #eef1f4; padding:8px 10px; font-size:12px; white-space:nowrap; }
-        .table th{ color:#6b7280; font-weight:600; }
-        .table .sticky{ position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid #eef1f4; }
       `}</style>
     </>
   );
 }
 
 /* ---------------------------- Day Grid (scheduler) --------------------------- */
-function DayGrid({
-  theDay, groupBy, locations, rooms, therapists, therapistById, roomById,
-  bookings, onDelete
-}) {
+function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings }) {
   const slotMinutes = 30;
+
   const slots = useMemo(()=>{
     const span = HOURS[theDay.getDay()];
     if(!span) return [];
@@ -461,6 +466,8 @@ function DayGrid({
     return isSameDay(s, theDay) && e>cellStart && s<cellEnd;
   };
 
+  const therapistColor = (id) => colorForId(String(id));
+
   return (
     <div style={{marginBottom:18}}>
       {slots.length===0 ? (
@@ -470,22 +477,22 @@ function DayGrid({
       )}
 
       {slots.length>0 && (
-        <div style={{overflowX:"auto"}}>
+        <div className="schedule-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th className="sticky" style={{width:200}}>
+                <th className="first">
                   {groupBy==="room" ? "Room" : groupBy==="therapist" ? "Therapist" : "Location"}
                 </th>
                 {slots.map((s,i)=>(
-                  <th key={i}>{format(s,"h:mma")}</th>
+                  <th key={i} className="time">{format(s,"h:mma")}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {groups.map((entity)=>(
                 <tr key={entity.id || entity.name}>
-                  <td className="sticky" style={{fontWeight:600}}>
+                  <td className="first" style={{fontWeight:600}}>
                     {groupBy==="room" ? entity.name :
                      groupBy==="therapist" ? (entity.name || entity.email) :
                      entity.name}
@@ -499,20 +506,17 @@ function DayGrid({
                       } else if(groupBy==="therapist") {
                         return b.therapist_id===entity.id && isInCell(b,cellStart,cellEnd);
                       } else {
-                        const room = roomById[b.room_id];
-                        return room && room.location_id===entity.id && isInCell(b,cellStart,cellEnd);
+                        // group by location: include bookings in rooms of this location
+                        return String(b.location_id||b.room?.location_id)===String(entity.id) && isInCell(b,cellStart,cellEnd);
                       }
                     });
 
                     return (
-                      <td key={idx} style={{position:"relative", height:48}}>
+                      <td key={idx} style={{position:"relative", height:50}}>
                         {rowBookings.map(b=>{
-                          const t = therapistById[b.therapist_id];
-                          const color = colorForId(b.therapist_id);
-                          const room = roomById[b.room_id];
+                          const color = therapistColor(b.therapist_id);
                           return (
                             <motion.div key={b.id} layout
-                              className="badge"
                               style={{
                                 position:"absolute", inset:4, border:`1px solid ${color}66`,
                                 background:`${color}15`, color:"#111", borderRadius:12,
@@ -520,20 +524,11 @@ function DayGrid({
                               }}
                               title={`${format(parseISO(b.start_time),"h:mma")} – ${format(parseISO(b.end_time),"h:mma")}`}
                             >
-                              <div style={{fontWeight:600}}>
-                                {groupBy==="therapist" ? (room?.name || "Room")
-                                  : (t?.name || t?.email || "Therapist")}
-                              </div>
+                              <div style={{fontWeight:600}}>{b.therapist_name || "Therapist"}</div>
                               <div style={{fontSize:12, opacity:.75}}>
                                 {format(parseISO(b.start_time),"h:mma")}–{format(parseISO(b.end_time),"h:mma")}
-                                {groupBy==="location" && room?.name ? ` • ${room.name}` : ""}
                               </div>
                               {b.notes && <div style={{fontSize:12, opacity:.7}}>{b.notes}</div>}
-                              <div style={{position:"absolute", right:6, top:6, display:"flex", gap:6}}>
-                                <DangerButton className="btn--sm" onClick={()=>onDelete(b.id, b.series_id)}>
-                                  <Trash2 size={14}/>
-                                </DangerButton>
-                              </div>
                             </motion.div>
                           );
                         })}

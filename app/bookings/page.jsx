@@ -98,13 +98,14 @@ export default function BookingsPage() {
   // recurrence: "none" | "weekly" | "biweekly"
   const [repeatMode, setRepeatMode] = useState("none");
   const [repeatUntil, setRepeatUntil] = useState(""); // yyyy-MM-dd
+  const [replaceConflicts, setReplaceConflicts] = useState(false);
 
   // fixed day window
   const weekDays = useMemo(() => getTwoWeekDays(), []);
 
   useEffect(() => {
     (async ()=>{
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session} } = await supabase.auth.getSession();
       if (!session) { window.location.href="/login"; return; }
 
       const [locs, rms, ths] = await Promise.all([
@@ -206,7 +207,17 @@ export default function BookingsPage() {
         .not("start_time", "gte", e.toISOString());
 
       if (cErr) { setErr(cErr.message); return; }
-      if (conflicts?.length) { skipped++; continue; }
+
+      if (conflicts?.length) {
+        if (replaceConflicts) {
+          const ids = conflicts.map(c => c.id);
+          const { error: delErr } = await supabase.from("bookings").delete().in("id", ids);
+          if (delErr) { setErr(delErr.message); return; }
+        } else {
+          skipped++;
+          continue;
+        }
+      }
 
       const { error } = await supabase.from("bookings").insert({
         room_id: Number(mRoomId),
@@ -224,7 +235,7 @@ export default function BookingsPage() {
 
     setOpen(false);
     setMNotes(""); setMRoomId(""); setMTherapistId(""); setMStart(""); setMEnd("");
-    setRepeatMode("none"); setRepeatUntil("");
+    setRepeatMode("none"); setRepeatUntil(""); setReplaceConflicts(false);
 
     // Refresh
     const start = new Date(weekDays[0]); start.setHours(0,0,0,0);
@@ -382,6 +393,7 @@ export default function BookingsPage() {
                   <Label>Notes</Label>
                   <Textarea rows={3} value={mNotes} onChange={e=>setMNotes(e.target.value)} placeholder="Optional" />
                 </div>
+
                 <div className="grid" style={{gridColumn:"span 2"}}>
                   <Label>Repeat</Label>
                   <Select value={repeatMode} onChange={(e)=>setRepeatMode(e.target.value)}>
@@ -396,6 +408,13 @@ export default function BookingsPage() {
                     <Input type="date" value={repeatUntil} onChange={e=>setRepeatUntil(e.target.value)} />
                   </div>
                 )}
+
+                <div className="grid" style={{gridColumn:"span 2"}}>
+                  <label className="label" style={{display:"flex", alignItems:"center", gap:8}}>
+                    <input type="checkbox" checked={replaceConflicts} onChange={e=>setReplaceConflicts(e.target.checked)} />
+                    Replace conflicts (delete overlapping bookings first)
+                  </label>
+                </div>
               </div>
             </div>
             <div className="modal__foot">
@@ -419,9 +438,11 @@ export default function BookingsPage() {
         .btn--primary:hover{ filter:brightness(.95); }
         .btn--danger{ background:#fee2e2; border-color:#fecaca; }
         .btn--sm{ padding:4px 8px; }
+
         .label{ font-size:12px; color:#6b7280; margin-bottom:4px; }
         .input,.select,.textarea{ width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:10px; background:#fff; }
         .textarea{ min-height:80px; }
+
         .grid{ display:grid; gap:8px; }
         .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
         .grid-6{ grid-template-columns: repeat(6, minmax(0,1fr)); }
@@ -431,10 +452,19 @@ export default function BookingsPage() {
         table.table { border-collapse: separate; border-spacing:0; min-width:100%; table-layout:fixed; }
         .table th, .table td{
           border-bottom:1px solid #eef1f4; padding:8px 10px; font-size:12px;
-          white-space:nowrap; text-align:center; min-width: 88px;
+          white-space:nowrap; text-align:center;
         }
-        .table th.time { color:#6b7280; font-weight:600; }
-        .table th.first, .table td.first { position:sticky; left:0; background:#fff; z-index:1; text-align:left; min-width: 200px; border-right:1px solid #eef1f4; }
+        /* fixed widths for time columns — prevents bunching */
+        .table th.time, .table td.time {
+          min-width: 96px;
+          width: 96px;
+          display: inline-block;
+          border-right: 1px solid #eef1f4;
+        }
+        .table th.first, .table td.first {
+          position:sticky; left:0; background:#fff; z-index:2;
+          min-width: 200px; text-align:left; border-right:1px solid #eef1f4;
+        }
 
         .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:50; }
         .modal{ width:min(700px, 92vw); background:#fff; border-radius:16px; overflow:hidden; }
@@ -515,7 +545,7 @@ function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings, room
                     });
 
                     return (
-                      <td key={idx} style={{position:"relative", height:50}}>
+                      <td key={idx} className="time" style={{position:"relative", height:50}}>
                         {rowBookings.map(b=>{
                           const color = colorForId(String(b.therapist_id));
                           const therapist = therapists.find(t=>t.id===b.therapist_id);

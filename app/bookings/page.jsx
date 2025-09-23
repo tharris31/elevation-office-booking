@@ -3,40 +3,48 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import {
-  format, addMinutes, startOfWeek, endOfWeek, addDays,
-  isSameDay, parseISO
+  format, addMinutes, startOfWeek, addDays, endOfDay, parseISO, isSameDay
 } from "date-fns";
 import { motion } from "framer-motion";
-import {
-  Download, Plus, Trash2, Filter, Group, CalendarClock, Building2, X
-} from "lucide-react";
+import { Download, Plus, Trash2, Filter, Group, CalendarClock, Building2, X } from "lucide-react";
 
-/* ---------- light-weight UI primitives (keeps page self-contained) ---------- */
+/* ----------------------------- Lightweight UI ------------------------------ */
 const Button = ({ className="", children, ...p }) => (
   <button className={`btn ${className}`} {...p}>{children}</button>
 );
 const PrimaryButton = (p) => <Button className="btn--primary" {...p} />;
 const DangerButton = (p) => <Button className="btn--danger" {...p} />;
 const Label = ({children}) => <label className="label">{children}</label>;
-const Input = (p) => <input className="input" {...p}/>;
-const Textarea = (p) => <textarea className="textarea" {...p}/>;
-const Select = (p) => <select className="select" {...p}/>;
+const Input = (p) => <input className="input" {...p} />;
+const Textarea = (p) => <textarea className="textarea" {...p} />;
+const Select = (p) => <select className="select" {...p} />;
 
 const Card = ({children, style}) => <div className="card" style={style}>{children}</div>;
 const CardHeader = ({children}) => <div className="card__head">{children}</div>;
 const CardContent = ({children}) => <div className="card__body">{children}</div>;
 
-/* --------------------------- business hours config -------------------------- */
+/* ----------------------------- Business Hours ------------------------------ */
 /* Mon–Thu 9–20, Fri–Sat 9–16, Sun closed */
 const HOURS = { 0:null, 1:[9,20], 2:[9,20], 3:[9,20], 4:[9,20], 5:[9,16], 6:[9,16] };
 
-/* --------------------------- color per therapist ---------------------------- */
+/* ---------------------------- Helpers / Colors ----------------------------- */
 const colorForId = (id) => {
   let h=0; for (let i=0;i<(id?.length||0);i++) h=(h*31+id.charCodeAt(i))%360;
   return `hsl(${h} 70% 45%)`;
 };
 
-/* -------------------------------- CSV export -------------------------------- */
+// Two-week (Mon–Sat) window starting this week
+function getTwoWeekDays() {
+  const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
+  const days = [];
+  for (let w = 0; w < 2; w++) {
+    for (let d = 0; d < 6; d++) { // Mon..Sat (skip Sunday)
+      days.push(addDays(start, w * 7 + d));
+    }
+  }
+  return days;
+}
+
 function exportCSV(bookings, therapists, rooms, locations) {
   const tmap = Object.fromEntries(therapists.map(t=>[t.id, t.name || t.email || "Therapist"]));
   const rmap = Object.fromEntries(rooms.map(r=>[r.id, r.name]));
@@ -68,20 +76,18 @@ export default function BookingsPage() {
   const [roomsAll, setRoomsAll] = useState([]);
   const [therapists, setTherapists] = useState([]);
 
-  // filters/state
-  const [date, setDate] = useState(()=>format(new Date(),"yyyy-MM-dd"));
+  // filters
   const [locationId, setLocationId] = useState(""); // "" = All
   const [roomId, setRoomId] = useState("");
   const [therapistFilterId, setTherapistFilterId] = useState("");
   const [groupBy, setGroupBy] = useState("room"); // room | therapist | location
-  const [range, setRange] = useState("week");     // day | week
 
-  // list data
+  // data
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // modal (create)
+  // create modal state
   const [open, setOpen] = useState(false);
   const [mTherapistId, setMTherapistId] = useState("");
   const [mRoomId, setMRoomId] = useState("");
@@ -89,9 +95,12 @@ export default function BookingsPage() {
   const [mEnd, setMEnd] = useState("");
   const [mNotes, setMNotes] = useState("");
 
-  // recurrence
-  const [repeatWeekly, setRepeatWeekly] = useState(false);
+  // recurrence: "none" | "weekly" | "biweekly"
+  const [repeatMode, setRepeatMode] = useState("none");
   const [repeatUntil, setRepeatUntil] = useState(""); // yyyy-MM-dd
+
+  // fixed day window
+  const weekDays = useMemo(() => getTwoWeekDays(), []);
 
   useEffect(() => {
     (async ()=>{
@@ -111,29 +120,30 @@ export default function BookingsPage() {
     })();
   }, []);
 
-  const day = useMemo(()=> new Date(date+"T00:00"), [date]);
-  const weekDays = useMemo(()=>{
-    if (range==="day") return [day];
-    const start = startOfWeek(day,{weekStartsOn:1}); const end = endOfWeek(day,{weekStartsOn:1});
-    const xs=[]; let d=start; while(d<=end){ xs.push(d); d=addDays(d,1) } return xs;
-  },[range,day]);
-
   const roomsForLocation = useMemo(()=>{
     if(!locationId) return roomsAll; // all locations
     return roomsAll.filter(r=> String(r.location_id)===String(locationId));
   },[roomsAll, locationId]);
 
-  useEffect(()=>{ // pick first room when location changes
+  useEffect(()=>{ // auto-pick a room when location changes
     if(!roomId && roomsForLocation.length) setRoomId(String(roomsForLocation[0].id));
   },[roomsForLocation,roomId]);
 
-  // fetch bookings for selected range & (all|specific) location
+  // Fetch bookings for the two-week window
   useEffect(()=>{
     (async()=>{
-      const start = startOfWeek(day,{weekStartsOn:1});
-      const end   = endOfWeek(day,{weekStartsOn:1}); end.setHours(23,59,59,999);
-      const ids = (locationId ? roomsAll.filter(r=>String(r.location_id)===String(locationId)) : roomsAll).map(r=>r.id);
+      if (roomsAll.length===0) return;
+
+      const start = new Date(weekDays[0]); start.setHours(0,0,0,0);
+      const end   = endOfDay(weekDays[weekDays.length - 1]);
+
+      const ids = (locationId
+        ? roomsAll.filter(r=>String(r.location_id)===String(locationId))
+        : roomsAll
+      ).map(r=>r.id);
+
       if(ids.length===0){ setBookings([]); return; }
+
       const { data, error } = await supabase
         .from("bookings")
         .select("id,series_id,room_id,therapist_id,start_time,end_time,notes,recur_weekly,recur_until")
@@ -141,10 +151,11 @@ export default function BookingsPage() {
         .gte("start_time", start.toISOString())
         .lte("end_time", end.toISOString())
         .order("start_time");
+
       setErr(error?.message || "");
       setBookings(data ?? []);
     })();
-  },[locationId, roomsAll, day]);
+  },[locationId, roomsAll, weekDays]);
 
   const therapistById = useMemo(()=>Object.fromEntries(therapists.map(t=>[t.id,t])),[therapists]);
   const roomById = useMemo(()=>Object.fromEntries(roomsAll.map(r=>[r.id,r])),[roomsAll]);
@@ -157,37 +168,36 @@ export default function BookingsPage() {
     });
   },[bookings, therapistFilterId, roomId]);
 
-  /* ------------------------------- create booking ------------------------------ */
+  /* ------------------------------- Create booking ---------------------------- */
   async function createBooking() {
     setErr("");
     if(!mTherapistId || !mRoomId || !mStart || !mEnd){ setErr("Please complete all required fields."); return; }
     if(new Date(mEnd) <= new Date(mStart)){ setErr("End time must be after start time."); return; }
 
-    const seriesId = repeatWeekly ? crypto.randomUUID() : null;
+    const seriesId = repeatMode !== "none" ? crypto.randomUUID() : null;
 
     const occurrences = [];
     const start0 = new Date(mStart);
     const end0   = new Date(mEnd);
 
-    if (!repeatWeekly) {
+    if (repeatMode === "none") {
       occurrences.push([start0, end0]);
     } else {
-      if(!repeatUntil){ setErr("Select an 'until' date for weekly repeats."); return; }
-      const until = new Date(repeatUntil+"T23:59");
+      if (!repeatUntil) { setErr("Select an 'until' date for repeating."); return; }
+      const until = new Date(repeatUntil + "T23:59");
       let s = new Date(start0), e = new Date(end0);
+      const stepDays = repeatMode === "weekly" ? 7 : 14;
       while (s <= until) {
         occurrences.push([new Date(s), new Date(e)]);
-        s = addDays(s, 7);
-        e = addDays(e, 7);
+        s = addDays(s, stepDays);
+        e = addDays(e, stepDays);
       }
     }
 
     let created = 0, skipped = 0;
     for (const [s, e] of occurrences) {
-      // ✅ RELIABLE CONFLICT CHECK:
+      // Reliable overlap test:
       // conflict exists when NOT (existing.end <= s OR existing.start >= e)
-      // which in PostgREST we can write as:
-      //  not(end_time.lte.s) AND not(start_time.gte.e)
       const { data: conflicts, error: cErr } = await supabase
         .from("bookings")
         .select("id")
@@ -205,7 +215,7 @@ export default function BookingsPage() {
         end_time: e.toISOString(),
         notes: mNotes || null,
         series_id: seriesId,
-        recur_weekly: !!seriesId,
+        recur_weekly: repeatMode === "weekly",
         recur_until: seriesId ? format(occurrences.at(-1)[1], "yyyy-MM-dd") : null
       });
       if (error) { setErr(error.message); return; }
@@ -213,12 +223,12 @@ export default function BookingsPage() {
     }
 
     setOpen(false);
-    // reset modal fields
-    setMNotes(""); setMRoomId(""); setMTherapistId(""); setMStart(""); setMEnd(""); setRepeatWeekly(false); setRepeatUntil("");
+    setMNotes(""); setMRoomId(""); setMTherapistId(""); setMStart(""); setMEnd("");
+    setRepeatMode("none"); setRepeatUntil("");
 
-    // refresh
-    const start = startOfWeek(day,{weekStartsOn:1});
-    const end   = endOfWeek(day,{weekStartsOn:1}); end.setHours(23,59,59,999);
+    // Refresh
+    const start = new Date(weekDays[0]); start.setHours(0,0,0,0);
+    const end   = endOfDay(weekDays[weekDays.length - 1]);
     const ids = (locationId ? roomsAll.filter(r=>String(r.location_id)===String(locationId)) : roomsAll).map(r=>r.id);
     const { data } = await supabase
       .from("bookings").select("id,series_id,room_id,therapist_id,start_time,end_time,notes,recur_weekly,recur_until")
@@ -249,7 +259,7 @@ export default function BookingsPage() {
 
   return (
     <>
-      {/* Top header row */}
+      {/* Top header */}
       <div className="row" style={{justifyContent:"space-between", marginBottom:12}}>
         <div className="row">
           <Building2 size={24} color="var(--brand)" />
@@ -275,18 +285,10 @@ export default function BookingsPage() {
               <option value="therapist">Group by Therapist</option>
               <option value="location">Group by Location</option>
             </Select>
-            <Select value={range} onChange={e=>setRange(e.target.value)} style={{width:140}}>
-              <option value="day">Day view</option>
-              <option value="week">Week view</option>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-6">
-            <div className="grid" style={{gridColumn:"span 2"}}>
-              <Label>Date</Label>
-              <Input type="date" value={date} onChange={e=>setDate(e.target.value)}/>
-            </div>
             <div className="grid">
               <Label>Location</Label>
               <Select value={locationId} onChange={e=>{ setLocationId(e.target.value); setRoomId(""); }}>
@@ -318,7 +320,7 @@ export default function BookingsPage() {
           <div className="row">
             <CalendarClock size={18} color="var(--brand)"/>
             <strong>
-              Schedule — {range==="day" ? format(day,"EEE, MMM d") : `${format(weekDays[0],"MMM d")} – ${format(weekDays[6],"MMM d")}`}
+              Schedule — {format(weekDays[0], "MMM d")} – {format(weekDays[weekDays.length - 1], "MMM d")}
             </strong>
           </div>
         </CardHeader>
@@ -331,6 +333,8 @@ export default function BookingsPage() {
               rooms={roomsForLocation}
               therapists={therapists}
               bookings={filtered}
+              roomById={roomById}
+              onDelete={deleteBooking}
             />
           ))}
         </CardContent>
@@ -379,14 +383,16 @@ export default function BookingsPage() {
                   <Textarea rows={3} value={mNotes} onChange={e=>setMNotes(e.target.value)} placeholder="Optional" />
                 </div>
                 <div className="grid" style={{gridColumn:"span 2"}}>
-                  <label className="row" style={{gap:10}}>
-                    <input type="checkbox" checked={repeatWeekly} onChange={e=>setRepeatWeekly(e.target.checked)}/>
-                    Repeat weekly
-                  </label>
+                  <Label>Repeat</Label>
+                  <Select value={repeatMode} onChange={(e)=>setRepeatMode(e.target.value)}>
+                    <option value="none">Do not repeat</option>
+                    <option value="weekly">Repeat weekly</option>
+                    <option value="biweekly">Repeat every 2 weeks</option>
+                  </Select>
                 </div>
-                {repeatWeekly && (
+                {repeatMode !== "none" && (
                   <div className="grid" style={{gridColumn:"span 2"}}>
-                    <Label>Repeat until (date)</Label>
+                    <Label>Repeat until</Label>
                     <Input type="date" value={repeatUntil} onChange={e=>setRepeatUntil(e.target.value)} />
                   </div>
                 )}
@@ -400,7 +406,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {/* page styles */}
+      {/* Styles */}
       <style jsx global>{`
         :root { --brand:#4f46e5; --muted:#6b7280; }
         .row { display:flex; align-items:center; gap:8px; }
@@ -421,18 +427,17 @@ export default function BookingsPage() {
         .grid-6{ grid-template-columns: repeat(6, minmax(0,1fr)); }
         @media (max-width:900px){ .grid-6{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
 
-        /* --------- TABLE VISIBILITY FIX: wider, centered hour columns ---------- */
         .schedule-wrap { overflow-x:auto; }
         table.table { border-collapse: separate; border-spacing:0; min-width:100%; table-layout:fixed; }
         .table th, .table td{
           border-bottom:1px solid #eef1f4; padding:8px 10px; font-size:12px;
-          white-space:nowrap; text-align:center; min-width: 88px; /* <-- make headers breathe */
+          white-space:nowrap; text-align:center; min-width: 88px;
         }
         .table th.time { color:#6b7280; font-weight:600; }
         .table th.first, .table td.first { position:sticky; left:0; background:#fff; z-index:1; text-align:left; min-width: 200px; border-right:1px solid #eef1f4; }
 
         .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:50; }
-        .modal{ width:min(680px, 92vw); background:#fff; border-radius:16px; overflow:hidden; }
+        .modal{ width:min(700px, 92vw); background:#fff; border-radius:16px; overflow:hidden; }
         .modal__head{ padding:12px 16px; border-bottom:1px solid #eef1f4; }
         .modal__body{ padding:14px 16px; }
         .modal__foot{ padding:12px 16px; border-top:1px solid #eef1f4; display:flex; gap:8px; justify-content:flex-end; }
@@ -442,7 +447,7 @@ export default function BookingsPage() {
 }
 
 /* ---------------------------- Day Grid (scheduler) --------------------------- */
-function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings }) {
+function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings, roomById, onDelete }) {
   const slotMinutes = 30;
 
   const slots = useMemo(()=>{
@@ -465,8 +470,6 @@ function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings }) {
     const s=parseISO(b.start_time), e=parseISO(b.end_time);
     return isSameDay(s, theDay) && e>cellStart && s<cellEnd;
   };
-
-  const therapistColor = (id) => colorForId(String(id));
 
   return (
     <div style={{marginBottom:18}}>
@@ -506,15 +509,17 @@ function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings }) {
                       } else if(groupBy==="therapist") {
                         return b.therapist_id===entity.id && isInCell(b,cellStart,cellEnd);
                       } else {
-                        // group by location: include bookings in rooms of this location
-                        return String(b.location_id||b.room?.location_id)===String(entity.id) && isInCell(b,cellStart,cellEnd);
+                        const room = roomById[b.room_id];
+                        return room && room.location_id===entity.id && isInCell(b,cellStart,cellEnd);
                       }
                     });
 
                     return (
                       <td key={idx} style={{position:"relative", height:50}}>
                         {rowBookings.map(b=>{
-                          const color = therapistColor(b.therapist_id);
+                          const color = colorForId(String(b.therapist_id));
+                          const therapist = therapists.find(t=>t.id===b.therapist_id);
+                          const tName = therapist?.name || therapist?.email || "Therapist";
                           return (
                             <motion.div key={b.id} layout
                               style={{
@@ -524,11 +529,16 @@ function DayGrid({ theDay, groupBy, locations, rooms, therapists, bookings }) {
                               }}
                               title={`${format(parseISO(b.start_time),"h:mma")} – ${format(parseISO(b.end_time),"h:mma")}`}
                             >
-                              <div style={{fontWeight:600}}>{b.therapist_name || "Therapist"}</div>
+                              <div style={{fontWeight:600}}>{tName}</div>
                               <div style={{fontSize:12, opacity:.75}}>
                                 {format(parseISO(b.start_time),"h:mma")}–{format(parseISO(b.end_time),"h:mma")}
                               </div>
                               {b.notes && <div style={{fontSize:12, opacity:.7}}>{b.notes}</div>}
+                              <div style={{position:"absolute", right:6, top:6, display:"flex", gap:6}}>
+                                <DangerButton className="btn--sm" onClick={()=>onDelete(b.id, b.series_id)}>
+                                  <Trash2 size={14}/>
+                                </DangerButton>
+                              </div>
                             </motion.div>
                           );
                         })}

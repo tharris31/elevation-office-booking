@@ -1,132 +1,14 @@
-/* app/globals.css */
-:root{
-  --bg:#f7f7fb;
-  --card:#fff;
-  --text:#0f172a;
-  --muted:#6b7280;
-  --brand:#4f46e5;
-  --brand-soft:#eef2ff;
-  --border:#e5e7eb;
-  --ring:#c7d2fe;
-  --radius: 16px;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text)}
-a{color:inherit;text-decoration:none}
-button{font:inherit;cursor:pointer}
+/* small helpers */
+.nav-link{ @apply text-slate-600 hover:text-slate-900; }
+.card{ @apply bg-white rounded-2xl shadow-sm border border-slate-200; }
+.card-hd{ @apply p-4 border-b border-slate-200 flex items-center justify-between; }
+.card-bd{ @apply p-4; }
 
-/* Layout */
-.site-header{
-  position:sticky; top:0; z-index:20;
-  display:flex; align-items:center; gap:16px;
-  background:var(--card); border-bottom:1px solid var(--border);
-  padding:12px 20px;
-}
-.site-header__brand{font-weight:700}
-.site-header__nav{display:flex; gap:14px}
-.site-header__nav a{padding:6px 8px;border-radius:10px}
-.site-header__nav a:hover{background:var(--brand-soft)}
-.site-header__auth{margin-left:auto}
-
-.container{max-width:1100px; margin:24px auto; padding:0 16px}
-
-/* Primitives */
-.card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden}
-.card__head{display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border)}
-.card__body{padding:16px}
-
-.btn{
-  display:inline-flex; align-items:center; gap:8px;
-  padding:8px 12px; border-radius:12px; border:1px solid var(--border); background:#fff;
-}
-.btn:hover{box-shadow:0 2px 10px rgba(0,0,0,.05)}
-.btn--primary{background:var(--brand); color:#fff; border-color:var(--brand)}
-.btn--danger{background:#fee2e2; border-color:#fecaca}
-
-.input, .select, .textarea{
-  width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:#fff;
-  outline:none;
-}
-.input:focus, .select:focus, .textarea:focus{box-shadow:0 0 0 3px var(--ring)}
-
-.label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
-
-.grid{display:grid; gap:12px}
-.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.grid-6{grid-template-columns:repeat(6,minmax(0,1fr))}
-
-/* Schedule table */
-.table{width:100%; border-collapse:separate; border-spacing:0}
-.table th, .table td{border-bottom:1px solid var(--border); padding:8px 10px; white-space:nowrap}
-.table th{color:var(--muted); font-weight:500}
-.table .sticky{position:sticky; left:0; background:#fff; z-index:1; border-right:1px solid var(--border)}
-
-/* Modal */
-.modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50}
-.modal{background:#fff; width:min(620px, 100%); border-radius:16px; border:1px solid var(--border); overflow:hidden}
-.modal__head{padding:14px 16px; border-bottom:1px solid var(--border); font-weight:600}
-.modal__body{padding:16px}
-.modal__foot{padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end}
-
-/* Small helpers */
-.badge{display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:3px 8px; border-radius:999px; background:var(--brand-soft); color:var(--brand)}
-.row{display:flex; align-items:center; gap:10px}
-
-/* Layout helpers */
-.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
-.toolbar { display:flex; justify-content:space-between; align-items:center; margin: 0.5rem 0 1rem; }
-.toolbar h1 { font-weight: 600; font-size: 1.15rem; }
-
-/* Cards */
-.card { background:#fff; border:1px solid #eaeaea; border-radius: 14px; margin: 16px 0; overflow:hidden; }
-.card-head { padding: 12px 16px; border-bottom:1px solid #eee; font-weight: 600; }
-
-/* Filters */
-.filters-grid { display:grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap:12px; padding: 16px; }
-.filters-grid label { display:block; font-size:12px; color:#666; margin-bottom:6px; }
-.filters-grid select { width:100%; padding: 8px 10px; border:1px solid #ddd; border-radius: 10px; background:#fff; }
-
-/* Utilization */
-.util-grid { display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:12px; padding: 16px; }
-.util-item { border:1px solid #eee; border-radius:12px; padding:12px; }
-.util-top { display:flex; justify-content:space-between; align-items:center; font-weight:500;}
-.util-pct { font-weight:700; }
-.util-bar { margin:8px 0; height:8px; border-radius:6px; background:#f0f0f0; overflow:hidden; }
-.util-fill { height:8px; background:#6366f1; }
-
-/* Schedule grid */
-.day-block { padding: 8px 12px 16px; }
-.day-title { font-weight:600; margin: 8px 0; }
-.grid-row { display:flex; border-bottom:1px dashed #eee; }
-.grid-row.header { border-top:1px solid #eee; background:#fafafa; }
-.first-col { width: 180px; flex: none; padding: 8px; border-right:1px solid #eee; font-weight:500; }
-.time-strip { display:flex; overflow:hidden; flex:1; }
-.time-cell { min-width: 95px; padding: 6px 4px; font-size: 12px; color:#606060; text-align:center; white-space:nowrap; }
-.slot-cell { position: relative; background:#fff; }
-
-/* Booking chip (clean, no icon spam) */
-.chip {
-  position:absolute; inset: 2px; border-radius: 10px;
-  border:1px solid #c7d2fe; background: #eef2ff;
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
-  padding: 4px 8px;
-}
-.chip-main { display:flex; flex-direction:column; align-items:flex-start; }
-.chip-title { font-size: 12px; font-weight:600; color:#1f2937; line-height:1.1; }
-.chip-time { font-size: 11px; color:#4b5563; }
-.chip-del {
-  width:20px; height:20px; border-radius:6px; border:1px solid #e5e7eb; background:#fff;
-  display:flex; align-items:center; justify-content:center; cursor:pointer;
-  font-size:12px; line-height:1; color:#6b7280;
-}
-.chip-del:hover { background:#fee2e2; color:#b91c1c; border-color:#fecaca; }
-
-/* Responsive tweaks */
-@media (max-width: 980px) {
-  .filters-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .util-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .first-col { width: 150px; }
-  .time-cell { min-width: 90px; }
-}
+/* bookings grid tweaks */
+.time-header { @apply text-xs text-slate-500 whitespace-nowrap; }
+.cell { @apply relative h-14 border-b border-slate-100 hover:bg-indigo-50 cursor-pointer; }
+.booking-chip { @apply absolute inset-0 m-0.5 rounded-xl text-white shadow-sm px-2 py-1 text-[11px] leading-tight; }
